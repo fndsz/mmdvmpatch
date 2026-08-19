@@ -303,25 +303,4 @@ index cf59d39..8d11b92 100644
  	<% if lh.source == "RF" then %>
  	<td style="background:#1d1;" class="auto-display2">RF</td>
  	<% else %>
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/livecall.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/livecall.htm
-index b2a2cb2..17e3266 100644
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/livecall.htm
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/livecall.htm
-@@ -18,7 +18,7 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
- 	</head>
- 	<body>
-     <div id="lc">
--        <% luci.template.render("mmdvm/lc", {lastheard = lastheard} ) %>
-+        <% luci.template.render("mmdvm/lc", {} ) %>
-     </div>
-     <script type="text/javascript">
-     //<![CDATA[
-@@ -51,4 +51,4 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
-         }
-     //]]>
-     </script>
--</body>
-\ No newline at end of file
-+</body>
- 
 
