@@ -1,306 +1,308 @@
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard.htm
-index dbd237c..23ac01c 100644
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard.htm
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard.htm
-@@ -8,7 +8,7 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
- <%+header%>
- <link rel="stylesheet" href="<%=resource%>/mmdvm.css">
- <div id="lh">
--<% luci.template.render("mmdvm/lastheard", {lastheard = lastheard} ) %>
-+<% luci.template.render("mmdvm/lastheard", {} ) %>
- </div>
- <% if luci.model.mmdvm.pocsag_enabled() then %>
- <h2><%:DAPNET Gateway Activity%></h2>
-@@ -39,4 +39,4 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
- 	});
- //]]>
- </script>
--<% luci.template.render("mmdvm/footer")%>
-\ No newline at end of file
-+<% luci.template.render("mmdvm/footer")%>
+From: Dual TS Dashboard Patch <patch@mmdvm.local>
+Subject: [PATCH] luci-app-mmdvm: add dual TS dashboard (vertical)
 
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lastheard.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lastheard.htm
-index 0b0f507..03dcf6a 100644
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lastheard.htm
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lastheard.htm
-@@ -2,75 +2,80 @@
- Copyright 2019-2020 Michael BD7MQB <bd7mqb@qq.com>
- This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
- -%>
--<%  if lastheard and #lastheard > 0 then %>
-+<% local llh = luci.util.ubus("dmrid", "get_lastheard", {}) or {lh={}}
-+local lastheard = llh.lh
-+local limit = llh.limit
-+local headlist = {}
-+if lastheard and #lastheard > 0 then
-+  for i, lh in ipairs(lastheard) do
-+     if i > limit then
-+         break
-+     end
-+     if not headlist[lh.mode] then
-+        headlist[lh.mode] = i
-+     end
-+  end
-+end
-+local keys = {}
-+for k, _ in pairs(headlist) do
-+   table.insert(keys, k)
-+end
-+table.sort(keys, function(a,b) return a<b end)
+Add a new dashboard page that shows DMR Slot 1 (top) and
+DMR Slot 2 (bottom) in two separate stacked panels.
+Each panel displays callsign, name, country, target, source,
+duration, loss and BER. The page auto-refreshes every 2 seconds.
+
+Usage:
+  mmdvm.patch
+
+Changes:
+  mmdvm.lua:  add get_lastheard_by_mode() and get_lastheard_for_mode()
+  public.lua:  add entry 'mmdvm/dashboard_dual' and action_dashboard_dual()
+  dashboard_dual.htm: new template with two stacked TS panels
+
+---
+diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua b/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
+--- a/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
++++ b/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
+@@ -703,6 +703,39 @@ function get_lastheard()
+ 	return lh
+ end
+ 
++--- Returns the most recent lastheard entry for each mode (DMR Slot 1, DMR Slot 2, etc.)
++-- Suitable for building a dual-slot dashboard
++function get_lastheard_by_mode()
++	local loglines = get_mmdvm_log()
++	local headlist = get_hearlist(loglines)
++	local by_mode = {}
++	local mode_order = {}
++	local seen = {}
 +
-+if keys and #keys > 0 then %>
- <table border="0">
-     <tr>
-         <th align="left"><div class="plaintext"><a href="<%=luci.dispatcher.build_url("mmdvm", "livecall")%>" class="item-content item-link">< <%:Live Caller%></a></div></th>
-         <th align="right" width="45%">
--        <% 
--        local lh = lastheard[1]
--        local callsign = lh.callsign
--
--        if not tonumber(callsign) then 
--            if string.find(callsign, "/") then
--                callsign = string.sub(callsign, 1, string.find(callsign, "/")-1)
--            elseif string.find(callsign, "-") then
--                callsign = string.sub(callsign, 1, string.find(callsign, "-")-1)
--            end
-+            <div class="plaintext"><a href="https://hose.brandmeister.network" target="_blank" class="link external">Hoseline<i class="f7-icons">volume</i></a></div>
-+        </th>
-+    </tr>
-+  <%
-+    local mmdvm = require("luci.model.mmdvm")
-+    for _, k in ipairs(keys) do
-+        local i = headlist[k]
-+        local lh = lastheard[i]
-+        local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or {callsign="", name="_", country="_" }
-+	local target = lh.target
-+	if string.len(target) > 6 and tonumber(target) then
-+            local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
-+            target = tobj.callsign
-         end
--
--        local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign}) or {
--            name="Unknown", country="Somewhere"
--        }
--
--        if string.find(lh.mode, "DMR") then
--            local tg = tonumber(string.sub(lh.target, 4))
--            if tg and tg > 90 then
--        %>
--            <div class="plaintext"><a href="https://hose.brandmeister.network/<%=tg%>" target="_blank" class="link external"><i class="f7-icons">volume</i></a></div>
--        <% 
--            end
--        end 
-         %>
--        </th>
--        </tr>
-     <tr>
-         <td class="lh_detail_callsign">
--            <p class="callsign"><%=lh.callsign%></p>
-+            <p class="callsign"><%=user.callsign or lh.callsign%></p>
-         </td>
-         <td class="lh_detail_callsign">
--            <p><%=user.name or "Unknown" %></p>
--            <p><%=user.country or "Somewhere" %></p>
-+            <p><%=user.name or "_" %></p>
-+            <p><%=user.country or "_" %></p>
-         </td>
-         </tr>
-     <tr>
-         <td class="lh_detail">
--            <p>Source - <%=lh.source%></p>
--            <p><%=lh.mode%> - <%=lh.target%></p>
-+            <p><%:Src%>: <%=lh.source%> &nbsp;&nbsp; <%:Mode%>: <%=lh.mode%> &nbsp;&nbsp; <%:Target%>: <%=target or lh.target%></p>
-         </td>
-         <td class="lh_detail">
-         <p>
-         <% if lh.duration then %>
--        <p>Duration <%=lh.duration%>s</p>
--        <p>Loss <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; BER <%="%0.1f" % {lh.ber}%>%</p>
--        <% else 
--            local mmdvm = require("luci.model.mmdvm")
-+        <p><%:Dur%>: <%=lh.duration%>s &nbsp;&nbsp; <%:Loss%>: <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; <%:BER%>: <%="%0.1f" % {lh.ber}%>%</p>
-+        <% else
-             local t = os.time() - mmdvm.s2t(lh.timestamp)
-         %>
--        <p>Duration <%=t%>s</p>
--        <p>Transmiting ...</p>
-+        <p><%:Dur%>: <%=t%>s &nbsp;&nbsp; <%:Transmiting ...%></p>
-         <% end %>
-         </p>
-         </td>
-     </tr>
-+    <% end %>
- </table>
- <% end %>
- <h2><%:Gateway Activity%></h2>
- <div id="lh">
--<% luci.template.render("mmdvm/lh", {lastheard = lastheard} ) %>
-+<% luci.template.render("mmdvm/lh", {lastheard = lastheard, limit=limit} ) %>
- </div>
- 
- <h2><%:Local RF%></h2>
- <div id="localtx">
- <% luci.template.render("mmdvm/lh", {lastheard = lastheard, localtx = 1} ) %>
--</div>
-\ No newline at end of file
-+</div>
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lc.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lc.htm
-index 63d6118..71c751d 100644
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lc.htm
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lc.htm
-@@ -2,21 +2,40 @@
- Copyright 2019-2020 Michael BD7MQB <bd7mqb@qq.com>
- This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
- -%>
--<%  if lastheard and #lastheard > 0 then %>
--<table id="livecall">
--        <% 
--        local uci   = require("luci.model.uci").cursor()
--        local lh = lastheard[1]
--        local callsign = lh.callsign
--        if string.find(callsign, "/") then
--            callsign = string.sub(callsign, 1, string.find(callsign, "/")-1)
--        elseif string.find(callsign, "-") then
--        callsign = string.sub(callsign, 1, string.find(callsign, "-")-1)
--        end
-+<% local llh = luci.util.ubus("dmrid", "get_lastheard", {}) or {lh={}}
-+local lastheard = llh.lh
-+local limit = llh.limit
-+local headlist = {}
-+if lastheard and #lastheard > 0 then
-+  for i, lh in ipairs(lastheard) do
-+     if i > limit then
-+         break
-+     end
-+     if not headlist[lh.mode] then
-+        headlist[lh.mode] = i
-+     end
-+  end
-+end
-+local keys = {}
-+for k, _ in pairs(headlist) do
-+   table.insert(keys, k)
-+end
-+table.sort(keys, function(a,b) return a<b end)
- 
--        local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign}) or {
--            name="Unknown", country="Somewhere"
--        }
-+if keys and #keys > 0 then %>
-+<table id="livecall">
-+    <%
-+    local uci   = require("luci.model.uci").cursor()
-+    local mmdvm = require("luci.model.mmdvm")
-+    for _, key in ipairs(keys) do
-+        local i = headlist[key]
-+        local lh = lastheard[i]
-+        local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or { callsign="", name="_", country="_" }
-+        local target = lh.target
-+        if string.len(target) > 6 and tonumber(target) then
-+		local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
-+		target = tobj.callsign
++	for i = 1, #headlist, 1 do
++		local mode = headlist[i].mode
++		if not seen[mode] then
++			seen[mode] = true
++			by_mode[mode] = headlist[i]
++			table.insert(mode_order, mode)
++		end
 +	end
- 
-         local modes = {
-             { name='DMR', status=(uci:get('mmdvm', 'DMR', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
-@@ -34,17 +53,16 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
-     <tr>
-         <td>
-             <div id="back"><a href="<%=luci.dispatcher.build_url('mmdvm', 'dashboard')%>"><< </a></div>
--            <label class="callsign"><%=callsign%></label>
-+            <label class="callsign"><%=user.callsign or lh.callsign%></label>
-         </td>
-         <td width="40%">
--            <p><%=user.name or "Unknown"%></p>
--            <p><%=user.country or "Somewhere"%></p>
-+            <p><%=user.name or "_" %></p>
-+            <p><%=user.country or "_"%></p>
-         </td>
-         </tr>
-     <tr>
--        <td height="40%">
--            <p>Source - <%=lh.source:upper()%></p>
--            <p class="mode"><%=lh.mode%> - <%=lh.target%></p>
-+        <td height="20%">
-+            <p><%:Src%>: <%=lh.source:upper()%> &nbsp;&nbsp; <%=lh.mode%> - <%=target or lh.target%></p>
-             <p>
-                 <% for _, mode in ipairs(modes) do %>
-                 <label class="mode <%=mode.status%>" title="<%=mode.name%> <%=mode.status%>"><%=mode.name%></label>
-@@ -52,21 +70,15 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
-             </p>
-         </td>
-         <td>
--        <p>
-         <% if lh.duration then %>
--        <p>Duration <%=lh.duration%>s</p>
--        <p>Loss <%="%0.1f" % {lh.loss} %>%</p>
--        <p>BER <%="%0.1f" % {lh.ber}%>%</p>
-+	<p><%:Dur%>: <%=lh.duration%>s</p><p><%:Loss%>: <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; <%:BER%>: <%="%0.1f" % {lh.ber}%>%</p>
-         <% else 
--            local mmdvm = require("luci.model.mmdvm")
-             local t = os.time() - mmdvm.s2t(lh.timestamp)
-         %>
--        <p>Duration <%=t%>s</p>
--        <p>Transmiting ...</p>
--        <p>&nbsp;</p>
-+	<p><%:Dur%> <%=t%>s</p><p><%:Transmiting ...%></p>
-         <% end %>
--        </p>
-         </td>
-     </tr>
-+    <% end %>
- </table>
--<% end %>
-\ No newline at end of file
-+<% end %>
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lh.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lh.htm
-index cf59d39..8d11b92 100644
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lh.htm
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/lh.htm
-@@ -7,15 +7,18 @@ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.
- 	<th class="auto-display"><%:Time%></th>
- 	<th class="auto-display2"><%:Mode%></th>
- 	<th class="auto-display3">M</th>
--	<th><%:Callsign%></th>
- 	<th><%:Target%></th>
-+	<th><%:Callsign%></th>
-+	<th class="auto-display2"><%:ID%></th>
-+	<th class="auto-display"><%:Name%></th>
-+	<th class="auto-display"><%:Pos%></th>
- 	<th class="auto-display2"><%:Src%></th>
- 	<th><%:Dur%></th>
- 	<th><%:Loss%></th>
- 	<th><%:BER%></th>
- </tr>
- <% for i, lh in ipairs(lastheard) do
--if not localtx and i > 20 then
-+if not localtx and i > limit then
- 	break
- end
- 
-@@ -45,13 +48,22 @@ elseif lh.ber >= 2.0 and lh.ber <= 4.9 then
- else
- 	ber_color = "#f33"
- end
-+local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or { callsign="", name="_", country="_" }
-+local target = lh.target
-+if string.len(target)>6 and tonumber(target) then
-+	local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
-+	target = tobj.callsign
++
++	return {
++		by_mode = by_mode,
++		mode_order = mode_order
++	}
 +end
- %>
- <tr>
- 	<td class="auto-display"><%=lh.timestamp%></td>
- 	<td class="auto-display2"><%=lh.mode%></td>
- 	<td class="auto-display3"><%=string.sub(lh.mode, 1, 1)%></td>
--	<td><a href="http://www.qrz.com/db/<%=lh.callsign%>" target="_blank"><%=lh.callsign%></a></td>
--	<td><%=lh.target%></td>
-+	<td><%=target or lh.target%></td>
-+	<td><a href="http://www.qrz.com/db/<%=user.callsign or lh.callsign%>" target="_blank"><%=user.callsign or lh.callsign%></a></td>
-+	<td class="auto-display2"><%=lh.callsign%></td>
-+	<td class="auto-display"><%=user.name%></td>
-+	<td class="auto-display"><%=user.country%></td>
- 	<% if lh.source == "RF" then %>
- 	<td style="background:#1d1;" class="auto-display2">RF</td>
- 	<% else %>
-
++
++--- Returns the most recent lastheard entry for a specific mode string
++-- @param mode_str e.g. "DMR Slot 1"
++function get_lastheard_for_mode(mode_str)
++	local loglines = get_mmdvm_log()
++	local headlist = get_hearlist(loglines)
++	for i = 1, #headlist, 1 do
++		if headlist[i].mode == mode_str then
++			return headlist[i]
++		end
++	end
++	return nil
++end
++
+ function get_last_pocsag()
+ 	local logs = {}
+ 	local loglines = get_dapnet_log()
+diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua b/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
+--- a/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
++++ b/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
+@@ -17,6 +17,7 @@ function index()
+ 	end
+ 	entry({"mmdvm"}, firstchild(), _("Radio"), 1).dependent = false
+ 	entry({"mmdvm", "dashboard"}, call("action_dashboard"), _("Dashboard"), 10).leaf = true
++	entry({"mmdvm", "dashboard_dual"}, call("action_dashboard_dual"), _("Dual TS"), 11).leaf = true
+ 	entry({"mmdvm", "log"}, firstchild(), _("Live Log"), 20)
+ 	entry({"mmdvm", "log", "mmdvmhost"}, call("action_livelog", {title="MMDVMHost", log="host"}), _("MMDVMHost"), 21).leaf = true
+ 	entry({"mmdvm", "log", "ysf"}, call("action_livelog", {title="YSFGateway", log="ysf"}), _("YSF GW"), 22).leaf = true
+@@ -72,6 +73,11 @@ function action_dashboard()
+ 	luci.template.render("mmdvm/dashboard", {lastheard = lastheard})
+ end
+ 
++function action_dashboard_dual()
++	local data = mmdvm.get_lastheard_by_mode()
++	luci.template.render("mmdvm/dashboard_dual", {data = data})
++end
++
+ function action_lastheard()
+ 	local lastheard = mmdvm.get_lastheard()
+ 	luci.template.render("mmdvm/lastheard", {lastheard = lastheard})
+diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm
+new file mode 100644
+--- /dev/null
++++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm
+@@ -0,0 +1,215 @@
++<%#
++Copyright 2025 MMDVM Dual TS Dashboard
++This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
++-%>
++<%+header%>
++<link rel="stylesheet" href="<%=resource%>/mmdvm.css">
++
++<style>
++.dual-dash-wrap {
++	display: flex;
++	flex-direction: column;
++	gap: 12px;
++	margin-top: 10px;
++	max-width: 900px;
++	margin-left: auto;
++	margin-right: auto;
++}
++.ts-panel {
++	border: 2px solid #202020;
++	border-radius: 8px;
++	overflow: hidden;
++	background: #000;
++	box-shadow: 0 2px 8px rgba(0,0,0,0.4);
++}
++.ts-panel.idle .ts-head {
++	background: #444;
++	color: #888;
++}
++.ts-panel.idle .ts-body {
++	color: #555;
++}
++.ts-head {
++	background: #ffcc00;
++	color: #202020;
++	font-weight: bold;
++	font-size: 16px;
++	padding: 8px 14px;
++	display: flex;
++	justify-content: space-between;
++	align-items: center;
++}
++.ts-head .ts-tag {
++	font-size: 11px;
++	background: #202020;
++	color: #ffcc00;
++	padding: 2px 10px;
++	border-radius: 3px;
++}
++.ts-indicator {
++	display: inline-block;
++	width: 10px;
++	height: 10px;
++	border-radius: 50%;
++	margin-left: 8px;
++	vertical-align: middle;
++}
++.ts-indicator.active {
++	background: #0f0;
++	box-shadow: 0 0 6px #0f0;
++}
++.ts-indicator.idle {
++	background: #555;
++}
++.ts-body {
++	padding: 12px 14px;
++	color: #fff;
++	font-size: 13px;
++	line-height: 1.8;
++}
++.ts-body .row {
++	display: flex;
++	gap: 20px;
++	flex-wrap: wrap;
++	align-items: center;
++}
++.ts-body .label {
++	color: #888;
++	font-size: 11px;
++}
++.ts-body .val {
++	color: #fff;
++	font-weight: bold;
++	font-size: 14px;
++}
++.ts-body .callsign-big {
++	font-family: 'enhanced_led_board-7regular', Arial, sans-serif;
++	font-size: 28px;
++	color: #ffcc00;
++	font-weight: bold;
++}
++.ts-body .name {
++	color: #ccc;
++	font-size: 12px;
++}
++.ts-body .country {
++	color: #999;
++	font-size: 11px;
++}
++.ts-body .no-activity {
++	text-align: center;
++	padding: 20px 0;
++	color: #555;
++	font-size: 16px;
++}
++@keyframes ts-pulse {
++	0%, 100% { opacity: 1; }
++	50% { opacity: 0.7; }
++}
++.ts-panel.active .ts-head {
++	animation: ts-pulse 1.5s ease-in-out infinite;
++}
++@media screen and (max-width:560px){
++	.dual-dash-wrap { gap: 8px; }
++	.ts-body .callsign-big { font-size: 22px; }
++	.ts-body .row { gap: 10px; }
++	.ts-body .val { font-size: 12px; }
++}
++</style>
++
++<h2><%:Dual TS Dashboard%></h2>
++<div class="dual-dash-wrap">
++
++	<!-- TS1 Panel (Top) -->
++	<div class="ts-panel <% if data.by_mode["DMR Slot 1"] then %>active<% else %>idle<% end %>">
++		<div class="ts-head">
++			<span><%:DMR Slot 1%> <span class="ts-indicator <% if data.by_mode["DMR Slot 1"] then %>active<% else %>idle<% end %>"></span></span>
++			<span class="ts-tag"><%:TS1%></span>
++		</div>
++		<div class="ts-body">
++		<% if data.by_mode["DMR Slot 1"] then
++			local e = data.by_mode["DMR Slot 1"]
++			local callsign_clean = e.callsign:gsub("/.*", ""):gsub("-.*", "")
++			local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign_clean}) or {
++				name = "_", country = "_", callsign = callsign_clean
++			}
++		%>
++			<div class="row">
++				<span class="callsign-big"><%=e.callsign%></span>
++				<span class="name"><%=user.name or "_"%></span>
++				<span class="country"><%=user.country or "_"%></span>
++			</div>
++			<div class="row">
++				<span><span class="label"><%:Target%>:</span> <span class="val"><%=e.target%></span></span>
++				<span><span class="label"><%:Src%>:</span> <span class="val"><%=e.source%></span></span>
++				<% if e.duration then %>
++					<% if e.duration == "SMS" then %>
++				<span><span class="label"><%:Type%>:</span> <span class="val" style="color:#1d1;">SMS</span></span>
++					<% else %>
++				<span><span class="label"><%:Dur%>:</span> <span class="val"><%=e.duration%>s</span></span>
++				<span><span class="label"><%:Loss%>:</span> <span class="val"><%="%0.1f" % {e.loss}%>%</span></span>
++				<span><span class="label"><%:BER%>:</span> <span class="val"><%="%0.1f" % {e.ber}%>%</span></span>
++					<% end %>
++				<% else %>
++				<span class="val" style="color:#f33;"><%:TX%></span>
++				<% end %>
++			</div>
++		<% else %>
++			<div class="no-activity"><%:No activity on TS1%></div>
++		<% end %>
++		</div>
++	</div>
++
++	<!-- TS2 Panel (Bottom) -->
++	<div class="ts-panel <% if data.by_mode["DMR Slot 2"] then %>active<% else %>idle<% end %>">
++		<div class="ts-head">
++			<span><%:DMR Slot 2%> <span class="ts-indicator <% if data.by_mode["DMR Slot 2"] then %>active<% else %>idle<% end %>"></span></span>
++			<span class="ts-tag"><%:TS2%></span>
++		</div>
++		<div class="ts-body">
++		<% if data.by_mode["DMR Slot 2"] then
++			local e = data.by_mode["DMR Slot 2"]
++			local callsign_clean = e.callsign:gsub("/.*", ""):gsub("-.*", "")
++			local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign_clean}) or {
++				name = "_", country = "_", callsign = callsign_clean
++			}
++		%>
++			<div class="row">
++				<span class="callsign-big"><%=e.callsign%></span>
++				<span class="name"><%=user.name or "_"%></span>
++				<span class="country"><%=user.country or "_"%></span>
++			</div>
++			<div class="row">
++				<span><span class="label"><%:Target%>:</span> <span class="val"><%=e.target%></span></span>
++				<span><span class="label"><%:Src%>:</span> <span class="val"><%=e.source%></span></span>
++				<% if e.duration then %>
++					<% if e.duration == "SMS" then %>
++				<span><span class="label"><%:Type%>:</span> <span class="val" style="color:#1d1;">SMS</span></span>
++					<% else %>
++				<span><span class="label"><%:Dur%>:</span> <span class="val"><%=e.duration%>s</span></span>
++				<span><span class="label"><%:Loss%>:</span> <span class="val"><%="%0.1f" % {e.loss}%>%</span></span>
++				<span><span class="label"><%:BER%>:</span> <span class="val"><%="%0.1f" % {e.ber}%>%</span></span>
++					<% end %>
++				<% else %>
++				<span class="val" style="color:#f33;"><%:TX%></span>
++				<% end %>
++			</div>
++		<% else %>
++			<div class="no-activity"><%:No activity on TS2%></div>
++		<% end %>
++		</div>
++	</div>
++</div>
++
++<div style="text-align:center; margin-top:14px;">
++	<a href="<%=luci.dispatcher.build_url('mmdvm','dashboard')%>" class="btn"><%:Back to Dashboard%></a>
++</div>
++
++<script type="text/javascript">
++//<![CDATA[
++	setTimeout(function(){ window.location.reload(); }, 2000);
++//]]>
++</script>
++
++<% luci.template.render("mmdvm/footer")%>
+-- 
+2.25.1
