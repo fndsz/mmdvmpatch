@@ -1,42 +1,350 @@
-From: Dual TS Dashboard Patch <patch@mmdvm.local>
-Subject: [PATCH] luci-app-mmdvm: add dual TS dashboard (vertical)
-
-Add a new dashboard page that shows DMR Slot 1 (top) and
-DMR Slot 2 (bottom) in two separate stacked panels.
-Each panel displays callsign, name, country, target, source,
-duration, loss and BER. The page auto-refreshes every 2 seconds.
-
-Usage:
-  mmdvm.patch
-
-Changes:
-  mmdvm.lua:  add get_lastheard_by_mode() and get_lastheard_for_mode()
-  public.lua:  add entry 'mmdvm/dashboard_dual' and action_dashboard_dual()
-  dashboard_dual.htm: new template with two stacked TS panels
-
----
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua b/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua
-@@ -703,6 +703,39 @@ function get_lastheard()
- 	return lh
+diff --git a/htdocs/luci-static/resources/mmdvm.css b/htdocs/luci-static/resources/mmdvm.css
+index 79e278b..9a6396f 100644
+--- a/htdocs/luci-static/resources/mmdvm.css
++++ b/htdocs/luci-static/resources/mmdvm.css
+@@ -117,26 +117,222 @@
+ 	text-align: center;
+ }
+ 
+-.lh_detail_callsign {
++/* ===== 双仪表盘样式 ===== */
++.dual-dash-wrap {
++	display: flex;
++	flex-direction: column;
++	gap: 12px;
++	margin: 10px 0;
++	max-width: 900px;
++	margin-left: auto;
++	margin-right: auto;
++}
++
++.ts-panel {
++	border: 2px solid #202020;
++	border-radius: 8px;
++	overflow: hidden;
++	background: #000;
++	transition: border-color 0.3s;
++}
++
++.ts-panel.ts-active {
++	border-color: #0f0;
++	box-shadow: 0 0 8px rgba(0,255,0,0.3);
++}
++
++.ts-panel.ts-idle {
++	opacity: 0.75;
++}
++
++.ts-head {
++	background: #ffcc00;
++	color: #202020;
++	font-weight: bold;
++	font-size: 15px;
++	padding: 6px 14px;
++	display: flex;
++	justify-content: space-between;
++	align-items: center;
++}
++
++.ts-panel.ts-idle .ts-head {
++	background: #444;
++	color: #888;
++}
++
++.ts-indicator {
++	display: inline-block;
++	width: 10px;
++	height: 10px;
++	border-radius: 50%;
++	background: #555;
++	margin-left: 8px;
++	vertical-align: middle;
++}
++
++.ts-indicator.ts-live {
++	background: #0f0;
++	box-shadow: 0 0 6px #0f0;
++	animation: ts-pulse 1.5s ease-in-out infinite;
++}
++
++@keyframes ts-pulse {
++	0%, 100% { opacity: 1; }
++	50% { opacity: 0.5; }
++}
++
++.ts-tag {
++	font-size: 11px;
++	padding: 2px 10px;
++	border-radius: 3px;
++	background: #202020;
++	color: #ffcc00;
++}
++
++.ts-body {
++	padding: 10px 14px;
++	color: #fff;
++	font-size: 13px;
++	line-height: 1.8;
++}
++
++.ts-row {
++	display: flex;
++	gap: 16px;
++	flex-wrap: wrap;
++	align-items: center;
++	margin: 2px 0;
++}
++
++.ts-callsign-row {
++	margin-bottom: 6px;
++	padding-bottom: 6px;
++	border-bottom: 1px solid #333;
++}
++
++.ts-callsign {
+ 	font-family: 'enhanced_led_board-7regular', Arial, sans-serif;
++	font-size: 26px;
++	font-weight: bold;
++	color: #ffcc00;
++}
++
++.ts-name {
++	color: #ccc;
++	font-size: 12px;
++}
++
++.ts-country {
++	color: #999;
++	font-size: 11px;
++}
++
++.ts-label {
++	color: #888;
++	font-size: 11px;
++}
++
++.ts-val {
++	color: #fff;
++	font-weight: bold;
++	font-size: 13px;
++}
++
++.ts-val.ts-tx {
++	color: #f33;
++}
++
++.ts-modes {
++	margin-top: 6px;
++	display: flex;
++	gap: 6px;
++}
++
++.ts-mode-chip {
++	font-size: 11px;
++	padding: 2px 8px;
++	border-radius: 3px;
++	background: #333;
++	color: #888;
++}
++
++.ts-mode-chip.ON {
++	background: #202020;
++	color: #ffcc00;
++}
++
++.ts-mode-chip.OFF {
++	background: #333;
++	color: #666;
++}
++
++/* 历史记录表格 */
++.ts-history {
++	margin-top: 10px;
++	border-top: 1px solid #333;
++	padding-top: 6px;
++}
++
++.ts-history-title {
++	font-size: 12px;
++	color: #888;
++	margin-bottom: 4px;
++	font-weight: bold;
++}
++
++.ts-hist-table {
++	width: 100%;
++	font-size: 11px;
++	border-collapse: collapse;
++}
++
++.ts-hist-table th {
++	padding: 3px 6px;
++	font-size: 10px;
++	background: #333;
++	color: #ccc;
++	border: 1px solid #444;
++}
++
++.ts-hist-table td {
++	padding: 2px 6px;
++	color: #ccc;
++	border: 1px solid #2a2a2a;
++	background: #111;
++}
++
++.ts-hist-table tr:nth-child(even) td {
++	background: #1a1a1a;
++}
++
++.ts-no-hist {
++	text-align: center;
++	color: #555;
++	padding: 8px;
++}
++
++/* ===== 原有样式 ===== */
++.lh_detail_callsign {
++	font-family: Arial, sans-serif;
+ 	color: #202020;
+ 	background-color: #FFCC00;
+ }
+ .lh_detail_callsign p.callsign {color: #202020; font-size: 22px; font-weight: bold; margin-top: 15px; margin-bottom: 15px;text-align: center}
+-.lh_detail_callsign p {margin: 0px; font-size: 11px; text-align: left;}
++.lh_detail_callsign p {margin: 0px; font-size: 12px; font-weight: bold; text-align: left;}
+ 
+ .lh_detail {
+-	font-family: 'enhanced_led_board-7regular', Arial, sans-serif;
++	font-family: Arial, sans-serif;
+ 	color: #fff;
+ 	background-color: #202020;
+ 	text-align: left;
+ }
+-.lh_detail p {margin: 0px; font-size: 10px;}
++.lh_detail p {margin: 0px; font-size: 11px;}
+ 
+ #livecall { height: 100%;}
+ #livecall td{
+ 	color: #202020;
+-	font-family: 'enhanced_led_board-7regular', Arial, sans-serif;
++	font-family: Arial, sans-serif;
+ 	background-color: #d38032;
+ }
+ #livecall p {
+@@ -161,6 +357,7 @@
+ 	background-color: #202020;
+ 	color: #d38032;
+ }
++
+ #livecall p label.OFF {
+ 	background-color: #5a5a5a;
+ 	color: #dba26c;
+@@ -182,9 +379,12 @@
+ @media screen and (max-width:560px){
+ 	.auto-display, #indicators { display:none; }
+ 	#maincontent.container { margin-top: auto; }
++	.ts-callsign { font-size: 20px; }
++	.ts-row { gap: 10px; }
+ }
+ @media screen and (max-width:360px){
+ 	.auto-display2 { display:none; }
++	.ts-hist-table { font-size: 10px; }
+ }
+ @media screen and (min-width:321px){
+ 	.auto-display3 { display:none; }
+diff --git a/luasrc/controller/mmdvm/public.lua b/luasrc/controller/mmdvm/public.lua
+index d2ea415..1e55af1 100644
+--- a/luasrc/controller/mmdvm/public.lua
++++ b/luasrc/controller/mmdvm/public.lua
+@@ -69,13 +69,13 @@
  end
  
-+--- Returns the most recent lastheard entry for each mode (DMR Slot 1, DMR Slot 2, etc.)
-+-- Suitable for building a dual-slot dashboard
-+function get_lastheard_by_mode()
+ function action_dashboard()
+-	local lastheard = mmdvm.get_lastheard()
+-	luci.template.render("mmdvm/dashboard", {lastheard = lastheard})
++	--- local lastheard = mmdvm.get_lastheard()
++	luci.template.render("mmdvm/dashboard", {})
+ end
+ 
+ function action_lastheard()
+-	local lastheard = mmdvm.get_lastheard()
+-	luci.template.render("mmdvm/lastheard", {lastheard = lastheard})
++	-- local lastheard = mmdvm.get_lastheard()
++	luci.template.render("mmdvm/lastheard", {})
+ end
+ 
+ function action_last_pocsag()
+@@ -84,11 +84,11 @@
+ end
+ 
+ function action_livecall()
+-	local lastheard = mmdvm.get_lastheard()
+-	luci.template.render("mmdvm/livecall", {lastheard = lastheard})
++	-- local lastheard = mmdvm.get_lastheard()
++	luci.template.render("mmdvm/livecall", {})
+ end
+ 
+ function action_lc()
+-	local lastheard = mmdvm.get_lastheard()
+-	luci.template.render("mmdvm/lc", {lastheard = lastheard})
++	-- local lastheard = mmdvm.get_lastheard()
++	luci.template.render("mmdvm/lc", {})
+ end
+diff --git a/luasrc/model/mmdvm.lua b/luasrc/model/mmdvm.lua
+index 2ac6a7f..e65244d 100644
+--- a/luasrc/model/mmdvm.lua
++++ b/luasrc/model/mmdvm.lua
+@@ -62,7 +62,6 @@
+ 
+ local function get_hearlist(loglines)
+ 	local headlist = {}
+-	local duration, loss, ber, rssi
+ 	-- local ts1duration, ts1loss, ts1ber, ts1rssi
+ 	-- local ts2duration, ts2loss, ts2ber, ts2rssi
+ 	-- local ysfduration, ysfloss, ysfber, ysfrssi
+@@ -70,6 +69,7 @@
+ 
+ 	for i = 1, #loglines do
+ 		local logline = loglines[i]
++		local duration, loss, ber, rssi
+ 		-- remoing invaild lines
+ 		repeat
+ 			if string.find(logline, "BS_Dwn_Act") or
+@@ -229,6 +229,47 @@
+ 	return result
+ end
+ 
++-- Returns lastheard entries grouped by mode (DMR Slot 1, DMR Slot 2, etc.)
++-- Each mode keeps up to 'limit' entries for history display
++function get_lastheard_by_mode(limit)
++	limit = limit or 25
 +	local loglines = get_mmdvm_log()
 +	local headlist = get_hearlist(loglines)
++
++	-- Deduplicate by callsign@mode, keep first occurrence
++	local calls = {}
++	local deduped = {}
++	for i = 1, #headlist do
++		local key = headlist[i].callsign .. "@" .. headlist[i].mode
++		if calls[key] == nil then
++			calls[key] = true
++			table.insert(deduped, headlist[i])
++		end
++	end
++
++	-- Group by mode, keep most recent 'limit' per mode
 +	local by_mode = {}
 +	local mode_order = {}
-+	local seen = {}
-+
-+	for i = 1, #headlist, 1 do
-+		local mode = headlist[i].mode
-+		if not seen[mode] then
-+			seen[mode] = true
-+			by_mode[mode] = headlist[i]
++	local mode_counts = {}
++	for i = 1, #deduped do
++		local mode = deduped[i].mode
++		if not by_mode[mode] then
++			by_mode[mode] = {}
 +			table.insert(mode_order, mode)
++			mode_counts[mode] = 0
++		end
++		if mode_counts[mode] < limit then
++			table.insert(by_mode[mode], deduped[i])
++			mode_counts[mode] = mode_counts[mode] + 1
 +		end
 +	end
 +
@@ -46,263 +354,933 @@ diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/model/mmdvm.lua b/mmdvm-luci/luci-
 +	}
 +end
 +
-+--- Returns the most recent lastheard entry for a specific mode string
-+-- @param mode_str e.g. "DMR Slot 1"
-+function get_lastheard_for_mode(mode_str)
-+	local loglines = get_mmdvm_log()
-+	local headlist = get_hearlist(loglines)
-+	for i = 1, #headlist, 1 do
-+		if headlist[i].mode == mode_str then
-+			return headlist[i]
-+		end
-+	end
-+	return nil
-+end
-+
  function get_last_pocsag()
- 	local logs = {}
- 	local loglines = get_dapnet_log()
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua b/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
---- a/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/controller/mmdvm/public.lua
-@@ -17,6 +17,7 @@ function index()
- 	end
- 	entry({"mmdvm"}, firstchild(), _("Radio"), 1).dependent = false
- 	entry({"mmdvm", "dashboard"}, call("action_dashboard"), _("Dashboard"), 10).leaf = true
-+	entry({"mmdvm", "dashboard_dual"}, call("action_dashboard_dual"), _("Dual TS"), 11).leaf = true
- 	entry({"mmdvm", "log"}, firstchild(), _("Live Log"), 20)
- 	entry({"mmdvm", "log", "mmdvmhost"}, call("action_livelog", {title="MMDVMHost", log="host"}), _("MMDVMHost"), 21).leaf = true
- 	entry({"mmdvm", "log", "ysf"}, call("action_livelog", {title="YSFGateway", log="ysf"}), _("YSF GW"), 22).leaf = true
-@@ -72,6 +73,11 @@ function action_dashboard()
- 	luci.template.render("mmdvm/dashboard", {lastheard = lastheard})
- end
- 
-+function action_dashboard_dual()
-+	local data = mmdvm.get_lastheard_by_mode()
-+	luci.template.render("mmdvm/dashboard_dual", {data = data})
+ 	local logtxt = ""
+ 	local lines = {}
+diff --git a/luasrc/view/mmdvm/dashboard.htm b/luasrc/view/mmdvm/dashboard.htm
+index 26057f1..070c6b4 100644
+--- a/luasrc/view/mmdvm/dashboard.htm
++++ b/luasrc/view/mmdvm/dashboard.htm
+@@ -4,41 +4,182 @@
+ -%>
+ <%+header%>
+ <link rel="stylesheet" href="<%=resource%>/mmdvm.css">
++
++<!-- ===== 上下双仪表盘面板 ===== -->
++<%
++local mmdvm = require("luci.model.mmdvm")
++local llh = luci.util.ubus("dmrid", "get_lastheard", {}) or {lh={}}
++local lastheard = llh.lh
++local limit = llh.limit or 25
++
++-- 按 mode 分组，取每个 mode 最新一条用于仪表盘
++local headlist = {}
++if lastheard and #lastheard > 0 then
++  for i, lh in ipairs(lastheard) do
++     if i > limit then break end
++     if not headlist[lh.mode] then
++        headlist[lh.mode] = i
++     end
++  end
 +end
-+
- function action_lastheard()
- 	local lastheard = mmdvm.get_lastheard()
- 	luci.template.render("mmdvm/lastheard", {lastheard = lastheard})
-diff --git a/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm
-new file mode 100644
---- /dev/null
-+++ b/mmdvm-luci/luci-app-mmdvm/luasrc/view/mmdvm/dashboard_dual.htm
-@@ -0,0 +1,215 @@
-+<%#
-+Copyright 2025 MMDVM Dual TS Dashboard
-+This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
-+-%>
-+<%+header%>
-+<link rel="stylesheet" href="<%=resource%>/mmdvm.css">
-+
-+<style>
-+.dual-dash-wrap {
-+	display: flex;
-+	flex-direction: column;
-+	gap: 12px;
-+	margin-top: 10px;
-+	max-width: 900px;
-+	margin-left: auto;
-+	margin-right: auto;
-+}
-+.ts-panel {
-+	border: 2px solid #202020;
-+	border-radius: 8px;
-+	overflow: hidden;
-+	background: #000;
-+	box-shadow: 0 2px 8px rgba(0,0,0,0.4);
-+}
-+.ts-panel.idle .ts-head {
-+	background: #444;
-+	color: #888;
-+}
-+.ts-panel.idle .ts-body {
-+	color: #555;
-+}
-+.ts-head {
-+	background: #ffcc00;
-+	color: #202020;
-+	font-weight: bold;
-+	font-size: 16px;
-+	padding: 8px 14px;
-+	display: flex;
-+	justify-content: space-between;
-+	align-items: center;
-+}
-+.ts-head .ts-tag {
-+	font-size: 11px;
-+	background: #202020;
-+	color: #ffcc00;
-+	padding: 2px 10px;
-+	border-radius: 3px;
-+}
-+.ts-indicator {
-+	display: inline-block;
-+	width: 10px;
-+	height: 10px;
-+	border-radius: 50%;
-+	margin-left: 8px;
-+	vertical-align: middle;
-+}
-+.ts-indicator.active {
-+	background: #0f0;
-+	box-shadow: 0 0 6px #0f0;
-+}
-+.ts-indicator.idle {
-+	background: #555;
-+}
-+.ts-body {
-+	padding: 12px 14px;
-+	color: #fff;
-+	font-size: 13px;
-+	line-height: 1.8;
-+}
-+.ts-body .row {
-+	display: flex;
-+	gap: 20px;
-+	flex-wrap: wrap;
-+	align-items: center;
-+}
-+.ts-body .label {
-+	color: #888;
-+	font-size: 11px;
-+}
-+.ts-body .val {
-+	color: #fff;
-+	font-weight: bold;
-+	font-size: 14px;
-+}
-+.ts-body .callsign-big {
-+	font-family: 'enhanced_led_board-7regular', Arial, sans-serif;
-+	font-size: 28px;
-+	color: #ffcc00;
-+	font-weight: bold;
-+}
-+.ts-body .name {
-+	color: #ccc;
-+	font-size: 12px;
-+}
-+.ts-body .country {
-+	color: #999;
-+	font-size: 11px;
-+}
-+.ts-body .no-activity {
-+	text-align: center;
-+	padding: 20px 0;
-+	color: #555;
-+	font-size: 16px;
-+}
-+@keyframes ts-pulse {
-+	0%, 100% { opacity: 1; }
-+	50% { opacity: 0.7; }
-+}
-+.ts-panel.active .ts-head {
-+	animation: ts-pulse 1.5s ease-in-out infinite;
-+}
-+@media screen and (max-width:560px){
-+	.dual-dash-wrap { gap: 8px; }
-+	.ts-body .callsign-big { font-size: 22px; }
-+	.ts-body .row { gap: 10px; }
-+	.ts-body .val { font-size: 12px; }
-+}
-+</style>
++local keys = {}
++for k, _ in pairs(headlist) do
++   table.insert(keys, k)
++end
++table.sort(keys, function(a,b) return a<b end)
++%>
 +
 +<h2><%:Dual TS Dashboard%></h2>
 +<div class="dual-dash-wrap">
++<%
++local uci = require("luci.model.uci").cursor()
++local modes_indicator = {
++   { name='DMR', status=(uci:get('mmdvm','DMR','Enable')=='1' and {'ON'} or {'OFF'})[1] },
++   { name='D-Star', status=(uci:get('mmdvm','DStar','Enable')=='1' and {'ON'} or {'OFF'})[1] },
++   { name='YSF', status=(uci:get('mmdvm','System_Fusion','Enable')=='1' and {'ON'} or {'OFF'})[1] },
++   { name='P25', status=(uci:get('mmdvm','P25','Enable')=='1' and {'ON'} or {'OFF'})[1] },
++   { name='NXDN', status=(uci:get('mmdvm','NXDN','Enable')=='1' and {'ON'} or {'OFF'})[1] },
++}
 +
-+	<!-- TS1 Panel (Top) -->
-+	<div class="ts-panel <% if data.by_mode["DMR Slot 1"] then %>active<% else %>idle<% end %>">
-+		<div class="ts-head">
-+			<span><%:DMR Slot 1%> <span class="ts-indicator <% if data.by_mode["DMR Slot 1"] then %>active<% else %>idle<% end %>"></span></span>
-+			<span class="ts-tag"><%:TS1%></span>
-+		</div>
-+		<div class="ts-body">
-+		<% if data.by_mode["DMR Slot 1"] then
-+			local e = data.by_mode["DMR Slot 1"]
-+			local callsign_clean = e.callsign:gsub("/.*", ""):gsub("-.*", "")
-+			local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign_clean}) or {
-+				name = "_", country = "_", callsign = callsign_clean
-+			}
-+		%>
-+			<div class="row">
-+				<span class="callsign-big"><%=e.callsign%></span>
-+				<span class="name"><%=user.name or "_"%></span>
-+				<span class="country"><%=user.country or "_"%></span>
-+			</div>
-+			<div class="row">
-+				<span><span class="label"><%:Target%>:</span> <span class="val"><%=e.target%></span></span>
-+				<span><span class="label"><%:Src%>:</span> <span class="val"><%=e.source%></span></span>
-+				<% if e.duration then %>
-+					<% if e.duration == "SMS" then %>
-+				<span><span class="label"><%:Type%>:</span> <span class="val" style="color:#1d1;">SMS</span></span>
-+					<% else %>
-+				<span><span class="label"><%:Dur%>:</span> <span class="val"><%=e.duration%>s</span></span>
-+				<span><span class="label"><%:Loss%>:</span> <span class="val"><%="%0.1f" % {e.loss}%>%</span></span>
-+				<span><span class="label"><%:BER%>:</span> <span class="val"><%="%0.1f" % {e.ber}%>%</span></span>
-+					<% end %>
-+				<% else %>
-+				<span class="val" style="color:#f33;"><%:TX%></span>
-+				<% end %>
-+			</div>
-+		<% else %>
-+			<div class="no-activity"><%:No activity on TS1%></div>
-+		<% end %>
-+		</div>
-+	</div>
++for _, k in ipairs(keys) do
++   local i = headlist[k]
++   local lh = lastheard[i]
++   local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or {callsign="", name="_", country="_"}
++   local target = lh.target
++   if string.len(target) > 6 and tonumber(target) then
++      local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
++      target = tobj.callsign
++   end
++   local is_active = (lh.duration == nil)
++   local dur_display
++   if lh.duration then
++      if lh.duration == "SMS" then
++         dur_display = "SMS"
++      else
++         dur_display = lh.duration .. "s"
++      end
++   else
++      local t = os.time() - mmdvm.s2t(lh.timestamp)
++      dur_display = t .. "s ..."
++   end
++   local loss_color = "#0f0"
++   if lh.loss > 0 and lh.loss < 2.0 then loss_color = "#ff0"
++   elseif lh.loss >= 2.0 and lh.loss <= 4.9 then loss_color = "#f80"
++   elseif lh.loss > 4.9 then loss_color = "#f33" end
++   local ber_color = "#0f0"
++   if lh.ber > 0 and lh.ber < 2.0 then ber_color = "#ff0"
++   elseif lh.ber >= 2.0 and lh.ber <= 4.9 then ber_color = "#f80"
++   elseif lh.ber > 4.9 then ber_color = "#f33" end
++%>
++   <div class="ts-panel <% if is_active then %>ts-active<% else %>ts-idle<% end %>">
++      <div class="ts-head">
++         <span class="ts-mode"><%=lh.mode%></span>
++         <span class="ts-indicator <% if is_active then %>ts-live<% end %>"></span>
++         <span class="ts-tag"><%=lh.source%></span>
++      </div>
++      <div class="ts-body">
++         <div class="ts-row ts-callsign-row">
++            <span class="ts-callsign"><%=user.callsign or lh.callsign%></span>
++            <span class="ts-name"><%=user.name or "_"%></span>
++            <span class="ts-country"><%=user.country or "_"%></span>
++         </div>
++         <div class="ts-row">
++            <span class="ts-label"><%:Target%>:</span> <span class="ts-val"><%=target or lh.target or ""%></span>
++            <span class="ts-label"><%:Dur%>:</span> <span class="ts-val <% if is_active then %>ts-tx<% end %>"><%=dur_display%></span>
++         </div>
++         <div class="ts-row">
++            <span class="ts-label"><%:Loss%>:</span> <span class="ts-val" style="color:<%=loss_color%>;"><%="%0.1f" % {lh.loss}%>%</span>
++            <span class="ts-label"><%:BER%>:</span> <span class="ts-val" style="color:<%=ber_color%>;"><%="%0.1f" % {lh.ber}%>%</span>
++            <span class="ts-label">ID:</span> <span class="ts-val"><%=lh.callsign%></span>
++         </div>
++         <div class="ts-modes">
++            <% for _, m in ipairs(modes_indicator) do %>
++            <span class="ts-mode-chip <%=m.status%>"><%=m.name%></span>
++            <% end %>
++         </div>
++      </div>
++      <!-- 该模式的历史记录 -->
++      <div class="ts-history">
++         <div class="ts-history-title"><%:History%> (<%=lh.mode%>)</div>
++         <table class="ts-hist-table">
++         <tr><th><%:Time%></th><th><%:Callsign%></th><th><%:Target%></th><th><%:Dur%></th><th><%:Loss%></th><th><%:BER%></th></tr>
++         <%
++         local hist_count = 0
++         for _, lh2 in ipairs(lastheard) do
++            if lh2.mode == lh.mode and hist_count < 8 then
++               hist_count = hist_count + 1
++               if hist_count == 1 then
++                  -- skip the current one already shown above
++               else
++         %>
++         <tr>
++            <td><%=lh2.timestamp%></td>
++            <td><%=lh2.callsign%></td>
++            <td><%=lh2.target%></td>
++            <td><%=lh2.duration or "TX"%></td>
++            <td><%="%0.1f" % {lh2.loss}%>%</td>
++            <td><%="%0.1f" % {lh2.ber}%>%</td>
++         </tr>
++         <%
++               end
++            end
++         end
++         if hist_count <= 1 then
++         %>
++         <tr><td colspan="6" class="ts-no-hist"><%:No history yet%></td></tr>
++         <% end %>
++         </table>
++      </div>
++   </div>
++<% end %>
 +
-+	<!-- TS2 Panel (Bottom) -->
-+	<div class="ts-panel <% if data.by_mode["DMR Slot 2"] then %>active<% else %>idle<% end %>">
-+		<div class="ts-head">
-+			<span><%:DMR Slot 2%> <span class="ts-indicator <% if data.by_mode["DMR Slot 2"] then %>active<% else %>idle<% end %>"></span></span>
-+			<span class="ts-tag"><%:TS2%></span>
-+		</div>
-+		<div class="ts-body">
-+		<% if data.by_mode["DMR Slot 2"] then
-+			local e = data.by_mode["DMR Slot 2"]
-+			local callsign_clean = e.callsign:gsub("/.*", ""):gsub("-.*", "")
-+			local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign_clean}) or {
-+				name = "_", country = "_", callsign = callsign_clean
-+			}
-+		%>
-+			<div class="row">
-+				<span class="callsign-big"><%=e.callsign%></span>
-+				<span class="name"><%=user.name or "_"%></span>
-+				<span class="country"><%=user.country or "_"%></span>
-+			</div>
-+			<div class="row">
-+				<span><span class="label"><%:Target%>:</span> <span class="val"><%=e.target%></span></span>
-+				<span><span class="label"><%:Src%>:</span> <span class="val"><%=e.source%></span></span>
-+				<% if e.duration then %>
-+					<% if e.duration == "SMS" then %>
-+				<span><span class="label"><%:Type%>:</span> <span class="val" style="color:#1d1;">SMS</span></span>
-+					<% else %>
-+				<span><span class="label"><%:Dur%>:</span> <span class="val"><%=e.duration%>s</span></span>
-+				<span><span class="label"><%:Loss%>:</span> <span class="val"><%="%0.1f" % {e.loss}%>%</span></span>
-+				<span><span class="label"><%:BER%>:</span> <span class="val"><%="%0.1f" % {e.ber}%>%</span></span>
-+					<% end %>
-+				<% else %>
-+				<span class="val" style="color:#f33;"><%:TX%></span>
-+				<% end %>
-+			</div>
-+		<% else %>
-+			<div class="no-activity"><%:No activity on TS2%></div>
-+		<% end %>
-+		</div>
-+	</div>
++<% if #keys == 0 then %>
++   <div class="ts-panel ts-idle">
++      <div class="ts-head"><span class="ts-mode"><%:No Activity%></span></div>
++      <div class="ts-body"><p style="text-align:center; color:#666; padding:20px;"><%:Waiting for signals ...%></p></div>
++   </div>
++<% end %>
 +</div>
 +
-+<div style="text-align:center; margin-top:14px;">
-+	<a href="<%=luci.dispatcher.build_url('mmdvm','dashboard')%>" class="btn"><%:Back to Dashboard%></a>
-+</div>
++<!-- ===== 原有 LastHeard 区域 ===== -->
+ <div id="lh">
+-<% luci.template.render("mmdvm/lastheard", {lastheard = lastheard} ) %>
++<% luci.template.render("mmdvm/lastheard", {} ) %>
+ </div>
 +
-+<script type="text/javascript">
-+//<![CDATA[
-+	setTimeout(function(){ window.location.reload(); }, 2000);
-+//]]>
-+</script>
+ <% if luci.model.mmdvm.pocsag_enabled() then %>
+ <h2><%:DAPNET Gateway Activity%></h2>
+ <div id="lp">
+-<% luci.template.render("mmdvm/lastpocsag", {pocsags = pocsags} ) %>
++<% luci.template.render("mmdvm/lastpocsag", {} ) %>
+ </div>
+ <% end %>
 +
-+<% luci.template.render("mmdvm/footer")%>
--- 
-2.25.1
+ <script type="text/javascript">
+ //<![CDATA[
+ function refreshLH() {
+ 	XHR.get('<%=luci.dispatcher.build_url("mmdvm", "lastheard")%>', null,
+ 		function(x) {
+-			if (!x || !x.responseText || x.responseText == "") {
+-				return;
+-			}
++			if (!x || !x.responseText || x.responseText == "") return;
+ 			document.getElementById("lh").innerHTML = x.responseText;
+ 		});
+ }
+ window.setInterval(refreshLH, 5000);
+ refreshLH();
++
+ <% if luci.model.mmdvm.pocsag_enabled() then %>
+ function refreshLP() {
+ 	XHR.get('<%=luci.dispatcher.build_url("mmdvm", "lastpocsag")%>', null,
+ 		function(x) {
+-			if (!x || !x.responseText || x.responseText == "") {
+-				return;
+-			}
++			if (!x || !x.responseText || x.responseText == "") return;
+ 			document.getElementById("lp").innerHTML = x.responseText;
+ 		});
+ }
+ window.setInterval(refreshLP, 10000);
+ refreshLP();
+ <% end %>
++
++-- 双仪表盘每3秒整体刷新
++setTimeout(function(){ window.location.reload(); }, 3000);
+ //]]>
+ </script>
++
+ <% luci.template.render("mmdvm/footer")%>
+diff --git a/luasrc/view/mmdvm/lastheard.htm b/luasrc/view/mmdvm/lastheard.htm
+index 7bdce9b..58e0ab2 100644
+--- a/luasrc/view/mmdvm/lastheard.htm
++++ b/luasrc/view/mmdvm/lastheard.htm
+@@ -2,74 +2,79 @@
+ Copyright 2019-2020 Michael BD7MQB <bd7mqb@qq.com>
+ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
+ -%>
+-<%  if lastheard and #lastheard > 0 then %>
++<% local llh = luci.util.ubus("dmrid", "get_lastheard", {}) or {lh={}}
++local lastheard = llh.lh
++local limit = llh.limit or 25
++local headlist = {}
++if lastheard and #lastheard > 0 then
++  for i, lh in ipairs(lastheard) do
++     if i > limit then
++         break
++     end
++     if not headlist[lh.mode] then
++        headlist[lh.mode] = i
++     end
++  end
++end
++local keys = {}
++for k, _ in pairs(headlist) do
++   table.insert(keys, k)
++end
++table.sort(keys, function(a,b) return a<b end)
++
++if keys and #keys > 0 then %>
+ <table border="0">
+ 	<tr>
+ 		<th align="left"><div class="plaintext"><a href="<%=luci.dispatcher.build_url("mmdvm", "livecall")%>" class="item-content item-link">< <%:Live Caller%></a></div></th>
+ 		<th align="right" width="45%">
+-		<% 
+-		local lh = lastheard[1]
+-		local callsign = lh.callsign
+-
+-		if not tonumber(callsign) then
+-			if string.find(callsign, "/") then
+-				callsign = string.sub(callsign, 1, string.find(callsign, "/")-1)
+-			elseif string.find(callsign, "-") then
+-				callsign = string.sub(callsign, 1, string.find(callsign, "-")-1)
+-			end
+-		end
+-
+-		local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign}) or {
+-			name="Unknown", country="Somewhere"
+-		}
+-
+-		if string.find(lh.mode, "DMR") then
+-			local tg = tonumber(string.sub(lh.target, 4))
+-			if tg and tg > 90 then
+-		%>
+-			<div class="plaintext"><a href="https://hose.brandmeister.network/<%=tg%>" target="_blank" class="link external"><i class="f7-icons">volume</i></a></div>
+-		<% 
+-			end
+-		end 
+-		%>
++			<div class="plaintext"><a href="https://hose.brandmeister.network" target="_blank" class="link external">Hoseline<i class="f7-icons">volume</i></a></div>
+ 		</th>
+ 	</tr>
++  <%
++    local mmdvm = require("luci.model.mmdvm")
++    for _, k in ipairs(keys) do
++        local i = headlist[k]
++        local lh = lastheard[i]
++        local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or {callsign="", name="_", country="_" }
++	local target = lh.target
++	if string.len(target) > 6 and tonumber(target) then
++            local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
++            target = tobj.callsign
++	end
++        %>
+ 	<tr>
+ 		<td class="lh_detail_callsign">
+-			<p class="callsign"><%=lh.callsign%></p>
++			<p class="callsign"><%=user.callsign or lh.callsign%></p>
+ 		</td>
+ 		<td class="lh_detail_callsign">
+-			<p><%=user.name or "Unknown" %></p>
+-			<p><%=user.country or "Somewhere" %></p>
++			<p><%=user.name or "_" %></p>
++			<p><%=user.country or "_" %></p>
+ 		</td>
+ 	</tr>
+ 	<tr>
+ 		<td class="lh_detail">
+-			<p>Source - <%=lh.source%></p>
+-			<p><%=lh.mode%> - <%=lh.target%></p>
++			<p><%:Src%>: <%=lh.source%> &nbsp;&nbsp; <%:Mode%>: <%=lh.mode%> &nbsp;&nbsp; <%:Target%>: <%=target or lh.target%></p>
+ 		</td>
+ 		<td class="lh_detail">
+ 		<p>
+ 		<% if lh.duration then %>
+-		<p>Duration <%=lh.duration%>s</p>
+-		<p>Loss <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; BER <%="%0.1f" % {lh.ber}%>%</p>
+-		<% else 
+-			local mmdvm = require("luci.model.mmdvm")
++		<p><%:Dur%>: <%=lh.duration%>s &nbsp;&nbsp; <%:Loss%>: <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; <%:BER%>: <%="%0.1f" % {lh.ber}%>%</p>
++		<% else
+ 			local t = os.time() - mmdvm.s2t(lh.timestamp)
+ 		%>
+-		<p>Duration <%=t%>s</p>
+-		<p>Transmiting ...</p>
++		<p><%:Dur%>: <%=t%>s &nbsp;&nbsp; <%:Transmiting ...%></p>
+ 		<% end %>
+ 		</p>
+ 		</td>
+ 	</tr>
++    <% end %>
+ </table>
+ <% end %>
+ <h2><%:Gateway Activity%></h2>
+ <div id="lh">
+-<% luci.template.render("mmdvm/lh", {lastheard = lastheard} ) %>
++<% luci.template.render("mmdvm/lh", {lastheard = lastheard, limit = limit} ) %>
+ </div>
+ <h2><%:Local RF%></h2>
+ <div id="localtx">
+-<% luci.template.render("mmdvm/lh", {lastheard = lastheard, localtx = 1} ) %>
++<% luci.template.render("mmdvm/lh", {lastheard = lastheard, localtx = 1, limit = limit} ) %>
+ </div>
+diff --git a/luasrc/view/mmdvm/lc.htm b/luasrc/view/mmdvm/lc.htm
+index 157fafc..018491e 100644
+--- a/luasrc/view/mmdvm/lc.htm
++++ b/luasrc/view/mmdvm/lc.htm
+@@ -2,44 +2,63 @@
+ Copyright 2019-2020 Michael BD7MQB <bd7mqb@qq.com>
+ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
+ -%>
+-<%  if lastheard and #lastheard > 0 then %>
++<% local llh = luci.util.ubus("dmrid", "get_lastheard", {}) or {lh={}}
++local lastheard = llh.lh
++local limit = llh.limit or 25
++local headlist = {}
++if lastheard and #lastheard > 0 then
++  for i, lh in ipairs(lastheard) do
++     if i > limit then
++         break
++     end
++     if not headlist[lh.mode] then
++        headlist[lh.mode] = i
++     end
++  end
++end
++local keys = {}
++for k, _ in pairs(headlist) do
++   table.insert(keys, k)
++end
++table.sort(keys, function(a,b) return a<b end)
++
++local uci   = require("luci.model.uci").cursor()
++local mmdvm = require("luci.model.mmdvm")
++
++if keys and #keys > 0 then %>
+ <table id="livecall">
+-	<% 
+-	local uci   = require("luci.model.uci").cursor()
+-	local lh = lastheard[1]
+-	local callsign = lh.callsign
+-	if string.find(callsign, "/") then
+-		callsign = string.sub(callsign, 1, string.find(callsign, "/")-1)
+-	elseif string.find(callsign, "-") then
+-		callsign = string.sub(callsign, 1, string.find(callsign, "-")-1)
++    <%
++    for _, key in ipairs(keys) do
++        local i = headlist[key]
++        local lh = lastheard[i]
++        local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or { callsign="", name="_", country="_" }
++        local target = lh.target
++        if string.len(target) > 6 and tonumber(target) then
++		local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
++		target = tobj.callsign
+ 	end
+ 
+-	local user = luci.util.ubus("dmrid", "get_by_callsign", {callsign = callsign}) or {
+-		name="Unknown", country="Somewhere"
+-	}
+-
+ 	local modes = {
+-		{ name='DMR', status=(uci:get('mmdvm', 'DMR', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
+-		{ name='D-Star', status=(uci:get('mmdvm', 'DStar', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
+-		{ name='YSF', status=(uci:get('mmdvm', 'System_Fusion', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
+-		{ name='P25', status=(uci:get('mmdvm', 'P25', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
+-		{ name='NXDN', status=(uci:get('mmdvm', 'NXDN', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
++	    { name='DMR', status=(uci:get('mmdvm', 'DMR', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
++	    { name='D-Star', status=(uci:get('mmdvm', 'DStar', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
++	    { name='YSF', status=(uci:get('mmdvm', 'System_Fusion', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
++	    { name='P25', status=(uci:get('mmdvm', 'P25', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
++	    { name='NXDN', status=(uci:get('mmdvm', 'NXDN', 'Enable') == '1' and {'ON'} or {'OFF'})[1] },
+ 	}
+-	%>
++    %>
+ 	<tr>
+ 		<td>
+ 			<div id="back"><a href="<%=luci.dispatcher.build_url('mmdvm', 'dashboard')%>"><< </a></div>
+-			<label class="callsign"><%=callsign%></label>
++			<label class="callsign"><%=user.callsign or lh.callsign%></label>
+ 		</td>
+ 		<td width="40%">
+-			<p><%=user.name or "Unknown"%></p>
+-			<p><%=user.country or "Somewhere"%></p>
++			<p><%=user.name or "_" %></p>
++			<p><%=user.country or "_"%></p>
+ 		</td>
+ 	</tr>
+ 	<tr>
+-		<td height="40%">
+-			<p>Source - <%=lh.source:upper()%></p>
+-			<p class="mode"><%=lh.mode%> - <%=lh.target%></p>
++		<td height="20%">
++			<p><%:Src%>: <%=lh.source:upper()%> &nbsp;&nbsp; <%=lh.mode%> - <%=target or lh.target%></p>
+ 			<p>
+ 				<% for _, mode in ipairs(modes) do %>
+ 				<label class="mode <%=mode.status%>" title="<%=mode.name%> <%=mode.status%>"><%=mode.name%></label>
+@@ -49,19 +68,15 @@
+ 		<td>
+ 		<p>
+ 		<% if lh.duration then %>
+-		<p>Duration <%=lh.duration%>s</p>
+-		<p>Loss <%="%0.1f" % {lh.loss} %>%</p>
+-		<p>BER <%="%0.1f" % {lh.ber}%>%</p>
+-		<% else 
+-			local mmdvm = require("luci.model.mmdvm")
++		<p><%:Dur%>: <%=lh.duration%>s</p><p><%:Loss%>: <%="%0.1f" % {lh.loss} %>% &nbsp;&nbsp; <%:BER%>: <%="%0.1f" % {lh.ber}%>%</p>
++		<% else
+ 			local t = os.time() - mmdvm.s2t(lh.timestamp)
+ 		%>
+-		<p>Duration <%=t%>s</p>
+-		<p>Transmiting ...</p>
+-		<p>&nbsp;</p>
++		<p><%:Dur%> <%=t%>s</p><p><%:Transmiting ...%></p>
+ 		<% end %>
+ 		</p>
+ 		</td>
+ 	</tr>
++    <% end %>
+ </table>
+ <% end %>
+diff --git a/luasrc/view/mmdvm/lh.htm b/luasrc/view/mmdvm/lh.htm
+index 0ad37cb..0e90aee 100644
+--- a/luasrc/view/mmdvm/lh.htm
++++ b/luasrc/view/mmdvm/lh.htm
+@@ -2,26 +2,32 @@
+ Copyright 2019-2020 Michael BD7MQB <bd7mqb@qq.com>
+ This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2.0
+ -%>
+-<% if lastheard and #lastheard > 0 then %>
++<% if lastheard and #lastheard > 0 then
++local mmdvm = require("luci.model.mmdvm")
++local limit = limit or 20
++%>
+ <table>
+ 	<tr>
+ 		<th class="auto-display"><%:Time%></th>
+ 		<th class="auto-display2"><%:Mode%></th>
+ 		<th class="auto-display3">M</th>
+-		<th><%:Callsign%></th>
+ 		<th><%:Target%></th>
++		<th><%:Callsign%></th>
++		<th class="auto-display2"><%:ID%></th>
++		<th class="auto-display"><%:Name%></th>
++		<th class="auto-display"><%:Pos%></th>
+ 		<th class="auto-display2"><%:Src%></th>
+ 		<th><%:Dur%></th>
+ 		<th><%:Loss%></th>
+ 		<th><%:BER%></th>
+ 	</tr>
+ <% for i, lh in ipairs(lastheard) do
+-	if not localtx and i > 20 then
++	if not localtx and i > limit then
+ 		break
+ 	end
+ 
+ 	repeat
+-		if localtx and lh.source ~= "RF" then 
++		if localtx and lh.source ~= "RF" then
+ 			break
+ 		end
+ 
+@@ -46,13 +52,23 @@
+ 		else
+ 			ber_color = "#f33"
+ 		end
++
++		local user = luci.util.ubus("dmrid", "get_user_by_uid", {uid = lh.callsign}) or { callsign="", name="_", country="_" }
++		local target = lh.target
++		if string.len(target) > 6 and tonumber(target) then
++			local tobj = luci.util.ubus("dmrid", "get_callsign_by_uid", {uid = target}) or {callsign=target}
++			target = tobj.callsign
++		end
+ 	%>
+ 	<tr>
+ 		<td class="auto-display"><%=lh.timestamp%></td>
+ 		<td class="auto-display2"><%=lh.mode%></td>
+ 		<td class="auto-display3"><%=string.sub(lh.mode, 1, 1)%></td>
+-		<td><a href="http://www.qrz.com/db/<%=lh.callsign%>" target="_blank"><%=lh.callsign%></a></td>
+-		<td><%=lh.target%></td>
++		<td><%=target or lh.target%></td>
++		<td><a href="http://www.qrz.com/db/<%=user.callsign or lh.callsign%>" target="_blank"><%=user.callsign or lh.callsign%></a></td>
++		<td class="auto-display2"><%=lh.callsign%></td>
++		<td class="auto-display"><%=user.name%></td>
++		<td class="auto-display"><%=user.country%></td>
+ 		<% if lh.source == "RF" then %>
+ 		<td style="background:#1d1;" class="auto-display2">RF</td>
+ 		<% else %>
+@@ -67,7 +83,6 @@
+ 			<td style="color:<%=ber_color%>"><%="%0.1f" % {lh.ber}%>%</td>
+ 			<% end %>
+ 		<% else %>
+-			<% local mmdvm = require("luci.model.mmdvm") %>
+ 			<td colspan="2" style="color:#f33;">TX</td>
+ 		<% end %>
+ 	</tr>
+diff --git a/luasrc/view/mmdvm/livecall.htm b/luasrc/view/mmdvm/livecall.htm
+index d4ac86b..7b75121 100644
+--- a/luasrc/view/mmdvm/livecall.htm
++++ b/luasrc/view/mmdvm/livecall.htm
+@@ -12,12 +12,12 @@
+ </head>
+ <body>
+ 	<div id="lc">
+-		<% luci.template.render("mmdvm/lc", {lastheard = lastheard} ) %>
++		<% luci.template.render("mmdvm/lc", {} ) %>
+ 	</div>
+ 	<script type="text/javascript">
+ 	//<![CDATA[
+ 	function refreshLC() {
+-		XHR.get('<%=luci.dispatcher.build_url("mmdvm", "lc")%>', null,
++	XHR.get('<%=luci.dispatcher.build_url("mmdvm", "lc")%>', null,
+ 			function(x) {
+ 				if (!x || !x.responseText || x.responseText == "") {
+ 					return;
+diff --git a/root/usr/sbin/dmrid.lua b/root/usr/sbin/dmrid.lua
+index f3acc63..054eae0 100644
+--- a/root/usr/sbin/dmrid.lua
++++ b/root/usr/sbin/dmrid.lua
+@@ -1,11 +1,16 @@
+ #!/usr/bin/lua
+--- Copyright 2019 BD7MQB (bd7mqb@qq.com)
++-- Copyright 2019-2025 Michael BD7MQB (bd7mqb@qq.com)
+ -- This is free software, licensed under the GNU GENERAL PUBLIC LICENSE, Version 2
+--- a DMR Ids service via ubus
++-- a DMR Ids service via ubus with log watcher for real-time lastheard
+ 
+ require "ubus" -- opkg install libubus-lua
+ require "uloop" -- opkg install libubox-lua
+ 
++local io = io
++local os = os
++local coroutine = coroutine
++local util = require "luci.util"
++
+ local conn = ubus.connect()
+ if not conn then
+ 	error("Failed to connect to ubus")
+@@ -19,8 +24,6 @@
+ end
+ 
+ --- Returns a table containing all the data from the INI file.
+---@param fileName The name of the INI file to parse. [string]
+---@return The table containing all data from the INI file. [table]
+ local function ini_load(fileName)
+ 	assert(type(fileName) == 'string', 'Parameter "fileName" must be a string.')
+ 	local file = assert(io.open(fileName, 'r'), 'Error loading file : ' .. fileName)
+@@ -90,35 +93,316 @@
+ 	conn:call("log", "write", {event = msg})
+ end
+ 
+--- local dmrid_file = ini_load("/etc/MMDVM.ini")["DMR Id Lookup"].File or "/etc/mmdvm/"
+-local dmrid_file = "/etc/mmdvm/"
+-log("Loading DMRIds from " .. dmrid_file .. " ...")
+--- local user_count = load_users(dmrid_file)
+--- log("Loaded " .. user_count .." Ids to the callsign lookup table ... Done")
+-
+ uloop.init()
+ 
+ local mmdvm = require("mmdvm")
+-mmdvm.init(dmrid_file)
++local dmrid_file = "/etc/mmdvm/DMRIds.dat"
++local dmrid_file1 = "/tmp/DMRIds.dat"
++mmdvm.init(dmrid_file, dmrid_file1)
++
++-- Check if a file exists
++local function file_exists(file)
++	local f = io.open(file, "r")
++	if f then f:close() end
++	return f ~= nil
++end
++
++-- Get the tail line in logfile
++local function get_tail_line(logfile)
++	return util.trim(util.exec("tail -n1 %s" % {logfile}))
++end
++
++-- Current log file name
++local current_logfile = nil
++-- Read line tracking
++local last_lines = {}
++-- cmd for read log
++local cmdlines = {}
++
++-- Log watcher coroutine function
++local function log_watcher(logfile)
++	local cmd = string.format("tail -n2000 -f %s", logfile)
++	local handle = io.popen(cmd, "r")
++	if not handle then
++		error("failed call io.popen()")
++	end
++	if logfile ~= current_logfile then
++		coroutine.yield()
++	end
++	cmdlines[logfile] = cmd
++	while true do
++		local tail_line = get_tail_line(logfile)
++		local lines = {}
++		local read_line = last_lines[logfile]
++		while tail_line ~= read_line do
++			read_line = handle:read("*line")
++			if read_line then
++				if read_line:match("from") or read_line:match("end") or
++				   read_line:match("watchdog") or read_line:match("lost") then
++					table.insert(lines, 1, read_line)
++				end
++			end
++		end
++		last_lines[logfile] = read_line
++		coroutine.yield(lines)
++	end
++	handle:close()
++end
++
++-- Log watching coroutines
++local log_coroutines = {}
+ 
+-local function get_dmrid_by_callsign(req, msg)
++-- Initialize or update the log watcher coroutine
++local function update_log_watcher()
++	local new_logfile = string.format("/var/log/mmdvm/MMDVM-%s.log", os.date("%Y-%m-%d"))
++	if new_logfile ~= current_logfile then
++		if file_exists(new_logfile) then
++			if current_logfile then
++				local cmdline = cmdlines[current_logfile]
++				if cmdline then
++					local cmd = "ps|grep \"" .. cmdline .. "\"|grep -v grep|awk '{print $1}'|xargs kill"
++					util.exec(cmd)
++					cmdlines[current_logfile] = nil
++				end
++				current_logfile = nil
++			end
++			local log_coroutine = coroutine.create(log_watcher)
++			local status, err = coroutine.resume(log_coroutine, new_logfile)
++			if status then
++				log_coroutines[new_logfile] = log_coroutine
++				current_logfile = new_logfile
++			end
++		end
++	end
++end
++
++-- Function to get the MMDVM log via coroutine
++local function get_mmdvm_log()
++	local log_lines = {}
++	update_log_watcher()
++	if current_logfile then
++		local log_coroutine = log_coroutines[current_logfile]
++		if log_coroutine and coroutine.status(log_coroutine) == "suspended" then
++			local status, lines = coroutine.resume(log_coroutine)
++			if status and #lines > 0 then
++				for _, line in ipairs(lines) do
++					table.insert(log_lines, 1, line)
++				end
++			end
++		end
++		table.sort(log_lines, function(a,b) return a>b end)
++	end
++	return log_lines
++end
++
++-- Parse log lines into headlist (mirrors mmdvm.lua get_hearlist logic)
++local function parse_hearlist(loglines)
++	local headlist = {}
++
++	for i = 1, #loglines do
++		local logline = loglines[i]
++		local duration, loss, ber, rssi
++
++		repeat
++			if string.find(logline, "BS_Dwn_Act") or
++				string.find(logline, "invalid access") or
++				string.find(logline, "received RF header for wrong repeater") or
++				string.find(logline, "Error returned") or
++				string.find(logline, "unable to decode the network CSBK") or
++				string.find(logline, "overflow in the DMR slot RF queue") or
++				string.find(logline, "non repeater RF header received") or
++				string.find(logline, "Embedded Talker Alias") or
++				string.find(logline, "DMR Talker Alias") or
++				string.find(logline, "CSBK Preamble") or
++				string.find(logline, "Preamble CSBK") or
++				string.find(logline, "Preamble VSBK") or
++				string.find(logline, "Downlink Activate received") or
++				string.find(logline, "Received a NAK") or
++				string.find(logline, "late entry")
++			then
++				break
++			end
++
++			local mode = string.sub(logline, 28, (string.find(logline, ",") or 0)-1)
++
++			if string.find(logline, "end of")
++				or string.find(logline, "watchdog has expired")
++				or string.find(logline, "ended RF data")
++				or string.find(logline, "ended network")
++				or string.find(logline, "RF user has timed out")
++				or string.find(logline, "transmission lost")
++				or string.find(logline, "D-Star")
++				or string.find(logline, "POCSAG")
++			then
++				local linetokens = logline:split(", ")
++				local count_tokens = (linetokens and #linetokens) or 0
++
++				if string.find(logline, "RF user has timed out") then
++					duration = "-1"
++					ber = "-1"
++				else
++					if count_tokens >= 3 then
++						duration = string.trim(string.sub(linetokens[3], 1, string.find(linetokens[3], " ")))
++					end
++					if count_tokens >= 4 then
++						loss = linetokens[4]
++					end
++				end
++
++				if string.find(loss or "", "BER") == 1 then
++					ber = string.trim(string.sub(loss, 6, 8))
++					loss = "0"
++				else
++					loss = string.trim(string.sub(loss or "", 1, -14))
++					if count_tokens >= 5 then
++						ber = string.trim(string.sub(linetokens[5] or "", 6, -2))
++					end
++				end
++			end
++
++			local timestamp = string.sub(logline, 4, 22)
++			local callsign, target
++			local source = "RF"
++
++			if mode ~= 'POCSAG' then
++				if string.find(logline, "from") and string.find(logline, "to") then
++					callsign = string.gsub(string.trim(string.sub(logline, string.find(logline, "from")+5, string.find(logline, "to") - 2)), " ", "")
++					target = string.sub(logline, string.find(logline, "to") + 3)
++					target = string.gsub(string.trim(string.sub(target, 0, string.find(target, ","))), ",", "")
++				end
++				if string.find(logline, "network") then
++					source = "Net"
++				end
++			end
++
++			local switch = {
++				["DMR Slot 1"] = function()
++					if string.find(logline, "ended RF data") or string.find(logline, "ended network") then
++						duration = "SMS"
++					end
++				end,
++				["DMR Slot 2"] = function()
++					if string.find(logline, "ended RF data") or string.find(logline, "ended network") then
++						duration = "SMS"
++					end
++				end,
++				["YSF"] = function()
++					if target and target:find('at') then
++						target = string.trim(string.sub(target, 14))
++					end
++				end,
++				["P25"] = function()
++					if source == "Net" then
++						if target == "TG 10" then
++							callsign = "PARROT"
++						end
++						if callsign == "10999" then
++							callsign = "MMDVM"
++						end
++					end
++				end,
++				["NXDN"] = function()
++					if source == "Net" then
++						if target == "TG 10" then
++							callsign = "PARROT"
++						end
++					end
++				end,
++				["D-Star"] = function()
++				end,
++				["POCSAG"] = function()
++					callsign = 'DAPNET'
++					source = "Net"
++					target = 'ALL'
++					duration = '0.0'
++					loss = '0'
++					ber = '0.0'
++				end,
++			}
++			local f = switch[mode]
++			if(f) then f() end
++
++			if callsign and #callsign:trim() <= 11 then
++				table.insert(headlist,
++					{
++						timestamp = timestamp,
++						mode = mode,
++						callsign = callsign,
++						target = target,
++						source = source,
++						duration = duration,
++						loss = tonumber(loss) or 0,
++						ber = tonumber(ber) or 0,
++						rssi = rssi
++					}
++				)
++			end
++		until true
++	end
++
++	return headlist
++end
++
++-- Persistent lastheard list (survives across ubus calls)
++local lh = {}
++
++local function get_lastheard()
++	local log_lines = get_mmdvm_log()
++	local headlist = parse_hearlist(log_lines)
++
++	-- Merge with persistent list
++	for i = 1, #lh do
++		table.insert(headlist, lh[i])
++	end
++
++	-- Clear and rebuild lh with dedup
++	local calls = {}
++	local new_lh = {}
++	for i = 1, #headlist do
++		if #new_lh >= 100 then
++			break
++		end
++		local key = headlist[i].callsign .. "@" .. headlist[i].mode
++		if calls[key] == nil then
++			calls[key] = true
++			table.insert(new_lh, headlist[i])
++		end
++	end
++	lh = new_lh
++
++	return lh
++end
++
++-- ubus handler: get_lastheard
++local function ubus_get_lastheard(req, msg)
++	local result = {}
++	result.lh = get_lastheard()
++	result.limit = 25
++	conn:reply(req, result)
++end
++
++-- ubus handler: get_user_by_uid
++local function ubus_get_user_by_uid(req, msg)
++	local result = {}
++	if msg.uid then
++		result = mmdvm.get_user_by_uid(msg.uid) or {}
++	end
++	conn:reply(req, result)
++end
++
++-- ubus handler: get_callsign_by_uid
++local function ubus_get_callsign_by_uid(req, msg)
++	local result = {}
++	if msg.uid then
++		result.callsign = mmdvm.get_callsign_by_uid(msg.uid) or msg.uid
++	end
++	conn:reply(req, result)
++end
++
++-- Legacy handler: get_by_callsign
++local function ubus_get_by_callsign(req, msg)
+ 	local result = {}
+ 	if msg.callsign then
+-		-- line = mmdvm.get_dmrid_by_callsign(msg.callsign)
+-		-- if line then
+-		--     local tokens = split(line, "\t")
+-		--     local name = tokens[1]
+-		--     local city = tokens[2]
+-		--     local country = tokens[3]
+-		--     result = {
+-		--         callsign = msg.callsign,
+-		--         name = name,
+-		--         city = city,
+-		--         country = country
+-		--     }
+-		-- else
+-		--     result = {}
+-		-- end
+ 		result = mmdvm.get_user_by_callsign(msg.callsign) or {}
+ 		result.callsign = msg.callsign
+ 	end
+@@ -127,18 +411,21 @@
+ 
+ local dmr_api = {
+ 	dmrid = {
+-		get_by_callsign = { get_dmrid_by_callsign, {} },
++		get_lastheard = { ubus_get_lastheard, {} },
++		get_user_by_uid = { ubus_get_user_by_uid, {} },
++		get_callsign_by_uid = { ubus_get_callsign_by_uid, {} },
++		get_by_callsign = { ubus_get_by_callsign, {} },
+ 	}
+ }
+ 
+ conn:add(dmr_api)
+ 
+--- uloop timer to keep the process alive and update data periodically
++log("dmrid.lua service started with log watcher, pid=" .. pid)
++
++-- uloop timer to keep alive and periodically update
+ local timer
+ timer = uloop.timer(function()
+-	-- keep alive, could add periodic refresh here
+ 	timer:set(30000)
+ end, 30000)
+ 
+-log("dmrid.lua service started, pid=" .. pid)
+ uloop.run()
